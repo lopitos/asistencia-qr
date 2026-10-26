@@ -1,0 +1,209 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Escáner QR de asistencia</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: Arial, sans-serif;
+      background: #f1f3f4;
+      color: #202124;
+    }
+
+    main {
+      max-width: 480px;
+      margin: auto;
+      background: white;
+      padding: 18px;
+      border-radius: 12px;
+    }
+
+    h2 { color: #1a73e8; }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 8px;
+      background: #1a73e8;
+      color: white;
+      font-size: 16px;
+    }
+
+    button:disabled { opacity: .5; }
+
+    #estado {
+      padding: 12px;
+      margin-top: 12px;
+      border-radius: 8px;
+      background: #e8f0fe;
+      overflow-wrap: anywhere;
+    }
+
+    #reader {
+      width: 100%;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+
+<body>
+<main>
+  <h2>📷 Escáner QR</h2>
+  <p>Coloca el código QR del socio frente a la cámara.</p>
+
+  <div id="reader"></div>
+  <div id="estado">Preparando cámara...</div>
+
+  <button id="btnIniciar" disabled>Iniciar cámara</button>
+  <button id="btnCerrar">Cerrar escáner</button>
+</main>
+
+<script>
+  let scanner = null;
+  let iniciando = false;
+  let enviando = false;
+
+  const estado = document.getElementById('estado');
+  const btnIniciar = document.getElementById('btnIniciar');
+
+  function mostrarEstado(texto) {
+    estado.textContent = texto;
+  }
+
+  async function iniciarEscaner() {
+    if (iniciando || scanner) return;
+
+    if (!window.isSecureContext ||
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+      mostrarEstado(
+        'No se puede acceder a la cámara. Abre el sitio publicado con HTTPS en Chrome.'
+      );
+      return;
+    }
+
+    iniciando = true;
+    btnIniciar.disabled = true;
+    mostrarEstado('Solicitando permiso para utilizar la cámara...');
+
+    try {
+      scanner = new Html5Qrcode('reader');
+
+      await scanner.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 240, height: 240 }
+        },
+        codigoLeido,
+        () => {}
+      );
+
+      mostrarEstado('Cámara activa. Escanea el QR del socio.');
+
+    } catch (error) {
+      scanner = null;
+      btnIniciar.disabled = false;
+
+      mostrarEstado(
+        'No se pudo iniciar la cámara: ' +
+        (error.message || String(error)) +
+        '. Comprueba los permisos del navegador.'
+      );
+
+    } finally {
+      iniciando = false;
+    }
+  }
+
+  async function codigoLeido(texto) {
+    if (enviando) return;
+
+    const codigo = String(texto).trim();
+    if (!codigo) return;
+
+    enviando = true;
+    mostrarEstado('Código leído: ' + codigo + '. Enviando para registrar...');
+
+    try {
+      if (scanner) {
+        await scanner.stop();
+        scanner.clear();
+        scanner = null;
+      }
+
+      if (!window.opener || window.opener.closed) {
+        mostrarEstado(
+          'No se encuentra la aplicación de asistencia original. ' +
+          'Cierra esta ventana y abre el escáner desde la aplicación.'
+        );
+        enviando = false;
+        btnIniciar.disabled = false;
+        return;
+      }
+
+      // El padre valida el origen antes de aceptar el código.
+      window.opener.postMessage({
+        tipo: 'ASISTENCIA_QR',
+        codigo: codigo
+      }, '*');
+
+      mostrarEstado(
+        'Código enviado. Esperando la confirmación del registro...'
+      );
+
+    } catch (error) {
+      scanner = null;
+      enviando = false;
+      btnIniciar.disabled = false;
+      mostrarEstado('Error al procesar el QR: ' + error.message);
+    }
+  }
+
+  // Recibe la respuesta de la aplicación original.
+  window.addEventListener('message', event => {
+    if (event.source !== window.opener) return;
+    if (!event.data || event.data.tipo !== 'ASISTENCIA_RESULTADO') return;
+
+    const r = event.data.resultado || {};
+
+    mostrarEstado(
+      (r.mensaje || 'Respuesta recibida') +
+      (r.nombre ? ' — ' + r.nombre : '')
+    );
+
+    enviando = false;
+    btnIniciar.disabled = false;
+  });
+
+  btnIniciar.addEventListener('click', iniciarEscaner);
+
+  document.getElementById('btnCerrar').addEventListener('click', async () => {
+    try {
+      if (scanner) {
+        await scanner.stop();
+        scanner.clear();
+        scanner = null;
+      }
+    } catch (error) {}
+
+    window.close();
+  });
+
+  // El usuario debe pulsar el botón para conceder el permiso.
+  mostrarEstado('Pulsa «Iniciar cámara» para comenzar.');
+  btnIniciar.disabled = false;
+</script>
+</body>
+</html>
