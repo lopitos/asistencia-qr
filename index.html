@@ -69,43 +69,56 @@
   <button id="btnCerrar">Cerrar escáner</button>
 </main>
   
-<!--
+
 <script>
+  const estado = document.getElementById('estado');
+  const btnIniciar = document.getElementById('btnIniciar');
+  const btnCerrar = document.getElementById('btnCerrar');
+
+  const URL_APPS_SCRIPT =
+    'https://script.google.com/macros/s/AKfycbzdf3DnzlO9rblR1UGnxdPgK6TnPxdoo1H6YwrZ855bD7Sh4Tgt6f4ZerfHj7ti_xMZTw/exec';
+
+  const ID_REUNION = new URLSearchParams(
+    window.location.search
+  ).get('reunion') || '';
+
   let scanner = null;
   let iniciando = false;
   let enviando = false;
-const URL_APPS_SCRIPT =
-  'https://script.google.com/macros/s/AKfycbzdf3DnzlO9rblR1UGnxdPgK6TnPxdoo1H6YwrZ855bD7Sh4Tgt6f4ZerfHj7ti_xMZTw/exec';
-  
-  const estado = document.getElementById('estado');
-  const btnIniciar = document.getElementById('btnIniciar');
-  //***************************************
-window.addEventListener('error', function(e) {
-  mostrarEstado('Error JavaScript: ' + e.message);
-});
 
-window.addEventListener('unhandledrejection', function(e) {
-  mostrarEstado('Error de inicialización: ' + String(e.reason));
-});
-  //*************************************
   function mostrarEstado(texto) {
     estado.textContent = texto;
   }
 
+  window.addEventListener('error', function(e) {
+    mostrarEstado('Error JavaScript: ' + e.message);
+    btnIniciar.disabled = false;
+  });
+
+  window.addEventListener('unhandledrejection', function(e) {
+    mostrarEstado(
+      'Error de inicialización: ' + String(e.reason)
+    );
+    btnIniciar.disabled = false;
+  });
+
   async function iniciarEscaner() {
     if (iniciando || scanner) return;
 
-    if (!window.isSecureContext ||
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia) {
+    if (
+      !window.isSecureContext ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
       mostrarEstado(
-        'No se puede acceder a la cámara. Abre el sitio publicado con HTTPS en Chrome.'
+        'No se puede acceder a la cámara. Abre esta página mediante HTTPS en Chrome.'
       );
       return;
     }
 
     iniciando = true;
     btnIniciar.disabled = true;
+
     mostrarEstado('Solicitando permiso para utilizar la cámara...');
 
     try {
@@ -118,7 +131,7 @@ window.addEventListener('unhandledrejection', function(e) {
           qrbox: { width: 240, height: 240 }
         },
         codigoLeido,
-        () => {}
+        function() {}
       );
 
       mostrarEstado('Cámara activa. Escanea el QR del socio.');
@@ -130,7 +143,7 @@ window.addEventListener('unhandledrejection', function(e) {
       mostrarEstado(
         'No se pudo iniciar la cámara: ' +
         (error.message || String(error)) +
-        '. Comprueba los permisos del navegador.'
+        '. Revisa los permisos de cámara.'
       );
 
     } finally {
@@ -138,93 +151,39 @@ window.addEventListener('unhandledrejection', function(e) {
     }
   }
 
-  // REEMPLAZO DE LA FUNCION CODIGO LEIDO
+  async function detenerEscaner() {
+    if (!scanner) return;
 
-// La reunión se recibe en la URL del escáner.
-const ID_REUNION = new URLSearchParams(
-  window.location.search
-).get('reunion') || '';
+    const instancia = scanner;
+    scanner = null;
 
-function solicitarRegistro(codigo) {
-  const callback = 'qrCallback_' +
-    Date.now() + '_' + Math.floor(Math.random() * 100000);
+    try {
+      await instancia.stop();
+    } catch (error) {
+      // La cámara podría haberse detenido previamente.
+    }
 
-  const script = document.createElement('script');
-  let finalizado = false;
-
-  function limpiar() {
-    if (finalizado) return;
-    finalizado = true;
-    delete window[callback];
-    script.remove();
+    try {
+      instancia.clear();
+    } catch (error) {}
   }
 
-  window[callback] = function(resultado) {
-    limpiar();
+  async function codigoLeido(texto) {
+    if (enviando) return;
 
-    mostrarEstado(
-      (resultado.mensaje || 'Respuesta recibida') +
-      (resultado.nombre ? ' — ' + resultado.nombre : '')
-    );
+    const codigo = String(texto || '').trim();
+    if (!codigo) return;
 
-    enviando = false;
-    btnIniciar.disabled = false;
-  };
+    enviando = true;
+    btnIniciar.disabled = true;
 
-  script.onerror = function() {
-    limpiar();
-    mostrarEstado(
-      'No se pudo comunicar con Apps Script. ' +
-      'Comprueba que la aplicación esté implementada y accesible.'
-    );
-    enviando = false;
-    btnIniciar.disabled = false;
-  };
+    mostrarEstado('QR leído. Registrando asistencia...');
 
-  const parametros = new URLSearchParams({
-    accion: 'registrar',
-    codigo: codigo,
-    reunion: ID_REUNION,
-    callback: callback
-  });
-
-  script.src = URL_APPS_SCRIPT + '?' + parametros.toString();
-  document.body.appendChild(script);
-
-  // Evita que la interfaz quede bloqueada si no llega respuesta.
-  setTimeout(() => {
-    if (finalizado) return;
-
-    limpiar();
-    mostrarEstado(
-      'Tiempo de espera agotado. Comprueba la conexión y la implementación.'
-    );
-    enviando = false;
-    btnIniciar.disabled = false;
-  }, 20000);
-}
-
-async function codigoLeido(texto) {
-  if (enviando) return;
-
-  const codigo = String(texto || '').trim();
-  if (!codigo) return;
-
-  enviando = true;
-  btnIniciar.disabled = true;
-
-  mostrarEstado('QR leído: ' + codigo + '. Registrando asistencia...');
-
-  try {
-    if (scanner) {
-      await scanner.stop();
-      scanner.clear();
-      scanner = null;
-    }
+    await detenerEscaner();
 
     if (!ID_REUNION) {
       mostrarEstado(
-        'No se recibió el ID de la reunión. Abre el escáner desde la aplicación.'
+        'Falta el ID de la reunión. Abre el escáner desde la aplicación principal.'
       );
       enviando = false;
       btnIniciar.disabled = false;
@@ -232,128 +191,87 @@ async function codigoLeido(texto) {
     }
 
     solicitarRegistro(codigo);
-
-  } catch (error) {
-    mostrarEstado('Error al procesar el QR: ' + error.message);
-    enviando = false;
-    btnIniciar.disabled = false;
   }
-}
-  
-  /*
-  async function codigoLeido(texto) {
-    if (enviando) return;
 
-    const codigo = String(texto).trim();
-    if (!codigo) return;
+  function solicitarRegistro(codigo) {
+    const callback = 'qrCallback_' +
+      Date.now() + '_' +
+      Math.floor(Math.random() * 100000);
 
-    enviando = true;
-    mostrarEstado('Código leído: ' + codigo + '. Enviando para registrar...');
+    const script = document.createElement('script');
+    let finalizado = false;
+    let temporizador;
 
-    try {
-      if (scanner) {
-        await scanner.stop();
-        scanner.clear();
-        scanner = null;
-      }
+    function limpiar() {
+      if (finalizado) return;
+      finalizado = true;
 
-      if (!window.opener || window.opener.closed) {
-        mostrarEstado(
-          'No se encuentra la aplicación de asistencia original. ' +
-          'Cierra esta ventana y abre el escáner desde la aplicación.'
-        );
-        enviando = false;
-        btnIniciar.disabled = false;
-        return;
-      }    */
+      clearTimeout(temporizador);
+      delete window[callback];
+      script.remove();
+    }
 
-      // El padre valida el origen antes de aceptar el código.
-      
-if (!window.opener || window.opener.closed) {
-  mostrarEstado('No se encuentra la aplicación principal.');
-  enviando = false;
-  btnIniciar.disabled = false;
-  return;
-}
-
-window.opener.postMessage({
-  tipo: 'ASISTENCIA_QR',
-  codigo: codigo
-}, '*');
-
-mostrarEstado('QR leído: ' + codigo +
-  '. Esperando respuesta de la aplicación principal...');
-      /*
-      window.opener.postMessage({
-        tipo: 'ASISTENCIA_QR',
-        codigo: codigo
-      }, '*');  */
+    window[callback] = function(resultado) {
+      limpiar();
 
       mostrarEstado(
-        'Código enviado. Esperando la confirmación del registro...'
+        (resultado.mensaje || 'Respuesta recibida') +
+        (resultado.nombre ? ' — ' + resultado.nombre : '')
       );
 
-    } catch (error) {
-      scanner = null;
       enviando = false;
       btnIniciar.disabled = false;
-      mostrarEstado('Error al procesar el QR: ' + error.message);
-    }
+    };
+
+    script.onerror = function() {
+      limpiar();
+
+      mostrarEstado(
+        'No se pudo comunicar con Apps Script. Revisa su implementación.'
+      );
+
+      enviando = false;
+      btnIniciar.disabled = false;
+    };
+
+    const parametros = new URLSearchParams({
+      accion: 'registrar',
+      codigo: codigo,
+      reunion: ID_REUNION,
+      callback: callback
+    });
+
+    script.src = URL_APPS_SCRIPT + '?' + parametros.toString();
+    document.body.appendChild(script);
+
+    temporizador = setTimeout(function() {
+      if (finalizado) return;
+
+      limpiar();
+
+      mostrarEstado(
+        'Tiempo de espera agotado. Comprueba la conexión y Apps Script.'
+      );
+
+      enviando = false;
+      btnIniciar.disabled = false;
+    }, 20000);
   }
-
-  // Recibe la respuesta de la aplicación original.
-  /*
-  window.addEventListener('message', event => {
-    if (event.source !== window.opener) return;
-    if (!event.data || event.data.tipo !== 'ASISTENCIA_RESULTADO') return;
-
-    const r = event.data.resultado || {};
-
-    mostrarEstado(
-      (r.mensaje || 'Respuesta recibida') +
-      (r.nombre ? ' — ' + r.nombre : '')
-    );
-
-    enviando = false;
-    btnIniciar.disabled = false;
-  });    */
 
   btnIniciar.addEventListener('click', iniciarEscaner);
 
-  document.getElementById('btnCerrar').addEventListener('click', async () => {
-    try {
-      if (scanner) {
-        await scanner.stop();
-        scanner.clear();
-        scanner = null;
-      }
-    } catch (error) {}
-
+  btnCerrar.addEventListener('click', async function() {
+    await detenerEscaner();
     window.close();
+
+    mostrarEstado(
+      'Escáner detenido. Si esta ventana no se cierra automáticamente, puedes cerrarla manualmente.'
+    );
   });
 
-  // El usuario debe pulsar el botón para conceder el permiso.
   mostrarEstado('Pulsa «Iniciar cámara» para comenzar.');
   btnIniciar.disabled = false;
-</script>    -->
+</script>
   
-<script>
-  const estado = document.getElementById('estado');
-  const btnIniciar = document.getElementById('btnIniciar');
-
-  estado.textContent = 'JavaScript funcionando correctamente.';
-  btnIniciar.disabled = false;
-  btnIniciar.textContent = 'Prueba de funcionamiento';
-
-  btnIniciar.addEventListener('click', function () {
-    estado.textContent =
-      'El botón funciona. Ahora podemos revisar el escáner QR.';
-  });
-
-  window.addEventListener('error', function (e) {
-    estado.textContent = 'Error JavaScript: ' + e.message;
-    btnIniciar.disabled = false;
-  });
-</script>  
 </body>
 </html>
