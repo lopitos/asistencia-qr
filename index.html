@@ -78,7 +78,15 @@ const URL_APPS_SCRIPT =
   
   const estado = document.getElementById('estado');
   const btnIniciar = document.getElementById('btnIniciar');
+  //***************************************
+window.addEventListener('error', function(e) {
+  mostrarEstado('Error JavaScript: ' + e.message);
+});
 
+window.addEventListener('unhandledrejection', function(e) {
+  mostrarEstado('Error de inicialización: ' + String(e.reason));
+});
+  //*************************************
   function mostrarEstado(texto) {
     estado.textContent = texto;
   }
