@@ -68,7 +68,8 @@
   <button id="btnIniciar" disabled>Iniciar cámara</button>
   <button id="btnCerrar">Cerrar escáner</button>
 </main>
-
+  
+<!--
 <script>
   let scanner = null;
   let iniciando = false;
@@ -334,6 +335,25 @@ mostrarEstado('QR leído: ' + codigo +
   // El usuario debe pulsar el botón para conceder el permiso.
   mostrarEstado('Pulsa «Iniciar cámara» para comenzar.');
   btnIniciar.disabled = false;
-</script>
+</script>    -->
+  
+<script>
+  const estado = document.getElementById('estado');
+  const btnIniciar = document.getElementById('btnIniciar');
+
+  estado.textContent = 'JavaScript funcionando correctamente.';
+  btnIniciar.disabled = false;
+  btnIniciar.textContent = 'Prueba de funcionamiento';
+
+  btnIniciar.addEventListener('click', function () {
+    estado.textContent =
+      'El botón funciona. Ahora podemos revisar el escáner QR.';
+  });
+
+  window.addEventListener('error', function (e) {
+    estado.textContent = 'Error JavaScript: ' + e.message;
+    btnIniciar.disabled = false;
+  });
+</script>  
 </body>
 </html>
