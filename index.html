@@ -73,7 +73,9 @@
   let scanner = null;
   let iniciando = false;
   let enviando = false;
-
+const URL_APPS_SCRIPT =
+  'https://script.google.com/macros/s/AKfycbzdf3DnzlO9rblR1UGnxdPgK6TnPxdoo1H6YwrZ855bD7Sh4Tgt6f4ZerfHj7ti_xMZTw/exec';
+  
   const estado = document.getElementById('estado');
   const btnIniciar = document.getElementById('btnIniciar');
 
@@ -127,6 +129,109 @@
     }
   }
 
+  // REEMPLAZO DE LA FUNCION CODIGO LEIDO
+
+// La reunión se recibe en la URL del escáner.
+const ID_REUNION = new URLSearchParams(
+  window.location.search
+).get('reunion') || '';
+
+function solicitarRegistro(codigo) {
+  const callback = 'qrCallback_' +
+    Date.now() + '_' + Math.floor(Math.random() * 100000);
+
+  const script = document.createElement('script');
+  let finalizado = false;
+
+  function limpiar() {
+    if (finalizado) return;
+    finalizado = true;
+    delete window[callback];
+    script.remove();
+  }
+
+  window[callback] = function(resultado) {
+    limpiar();
+
+    mostrarEstado(
+      (resultado.mensaje || 'Respuesta recibida') +
+      (resultado.nombre ? ' — ' + resultado.nombre : '')
+    );
+
+    enviando = false;
+    btnIniciar.disabled = false;
+  };
+
+  script.onerror = function() {
+    limpiar();
+    mostrarEstado(
+      'No se pudo comunicar con Apps Script. ' +
+      'Comprueba que la aplicación esté implementada y accesible.'
+    );
+    enviando = false;
+    btnIniciar.disabled = false;
+  };
+
+  const parametros = new URLSearchParams({
+    accion: 'registrar',
+    codigo: codigo,
+    reunion: ID_REUNION,
+    callback: callback
+  });
+
+  script.src = URL_APPS_SCRIPT + '?' + parametros.toString();
+  document.body.appendChild(script);
+
+  // Evita que la interfaz quede bloqueada si no llega respuesta.
+  setTimeout(() => {
+    if (finalizado) return;
+
+    limpiar();
+    mostrarEstado(
+      'Tiempo de espera agotado. Comprueba la conexión y la implementación.'
+    );
+    enviando = false;
+    btnIniciar.disabled = false;
+  }, 20000);
+}
+
+async function codigoLeido(texto) {
+  if (enviando) return;
+
+  const codigo = String(texto || '').trim();
+  if (!codigo) return;
+
+  enviando = true;
+  btnIniciar.disabled = true;
+
+  mostrarEstado('QR leído: ' + codigo + '. Registrando asistencia...');
+
+  try {
+    if (scanner) {
+      await scanner.stop();
+      scanner.clear();
+      scanner = null;
+    }
+
+    if (!ID_REUNION) {
+      mostrarEstado(
+        'No se recibió el ID de la reunión. Abre el escáner desde la aplicación.'
+      );
+      enviando = false;
+      btnIniciar.disabled = false;
+      return;
+    }
+
+    solicitarRegistro(codigo);
+
+  } catch (error) {
+    mostrarEstado('Error al procesar el QR: ' + error.message);
+    enviando = false;
+    btnIniciar.disabled = false;
+  }
+}
+  
+  /*
   async function codigoLeido(texto) {
     if (enviando) return;
 
@@ -151,7 +256,7 @@
         enviando = false;
         btnIniciar.disabled = false;
         return;
-      }
+      }    */
 
       // El padre valida el origen antes de aceptar el código.
       
@@ -188,6 +293,7 @@ mostrarEstado('QR leído: ' + codigo +
   }
 
   // Recibe la respuesta de la aplicación original.
+  /*
   window.addEventListener('message', event => {
     if (event.source !== window.opener) return;
     if (!event.data || event.data.tipo !== 'ASISTENCIA_RESULTADO') return;
@@ -201,7 +307,7 @@ mostrarEstado('QR leído: ' + codigo +
 
     enviando = false;
     btnIniciar.disabled = false;
-  });
+  });    */
 
   btnIniciar.addEventListener('click', iniciarEscaner);
 
