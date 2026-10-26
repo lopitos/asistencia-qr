@@ -154,10 +154,25 @@
       }
 
       // El padre valida el origen antes de aceptar el código.
-      window.opener.postMessage({
+if (!window.opener || window.opener.closed) {
+  mostrarEstado('No se encuentra la aplicación principal.');
+  enviando = false;
+  btnIniciar.disabled = false;
+  return;
+}
+
+window.opener.postMessage({
+  tipo: 'ASISTENCIA_QR',
+  codigo: codigo
+}, '*');
+
+mostrarEstado('QR leído: ' + codigo +
+  '. Esperando respuesta de la aplicación principal...');
+      
+     /* window.opener.postMessage({
         tipo: 'ASISTENCIA_QR',
         codigo: codigo
-      }, '*');
+      }, '*');  */
 
       mostrarEstado(
         'Código enviado. Esperando la confirmación del registro...'
